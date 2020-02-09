@@ -1,6 +1,8 @@
 from bokeh.plotting import figure, ColumnDataSource
 from bokeh.layouts import row, column, widgetbox
 from bokeh.models import HoverTool, Slider, CustomJS
+from bokeh.models import TapTool
+from bokeh.events import Tap, MouseMove
 from bokeh.embed import json_item
 from . import data
 
@@ -31,15 +33,55 @@ y_extra_info=data.label_extra_ordered, div_name="myplot"):
         </div>
 	"""
 
-	TOOLS = "hover,save,pan,box_zoom,reset,wheel_zoom"
+	TOOLS = "save,reset"
 	plot = figure(plot_height = 600, plot_width = 800, 
 	          x_axis_label = 'Percentage', 
 	           #y_axis_label = ,
 	           x_range=(0,100), y_range=y_variables, tools=TOOLS, tooltips=tooltips)
 
-	plot.hbar(left='values', y='variables', right=1, height=0.9, fill_color='red', line_color='black', fill_alpha = 0.75,
-	        hover_fill_alpha = 1.0, hover_fill_color = 'navy', source=all_data)
+	rnd = plot.circle(x='values', y='variables', source=all_data, size=28)
 	plot.title.text = "Relevant statistics about " + area
+
+	hovered = ColumnDataSource(data=dict(sel=[], y=[], p=[]))
+
+	callbackTap = CustomJS(args=dict(hovered=hovered), code="""
+		if (hovered.data["p"][0] == 0) {
+			hovered.data["p"] = [1];
+		} else {
+			hovered.data["p"] = [0];
+			hovered.data["sel"] = [];
+			hovered.data["y"] = [];
+		}
+		hovered.change.emit();
+	""")
+
+	callbackMove = CustomJS(args=dict(hovered=hovered, all_data=all_data), code="""
+		if (hovered.data["sel"].length == 1 && hovered.data["p"][0] == 1) {
+			all_data.data["values"][hovered.data["sel"][0]] = cb_obj["x"];
+			all_data.change.emit();
+		}
+	""")
+
+	callback_hover = CustomJS(args=dict(hovered=hovered), code="""
+		if (cb_data["index"]["1d"].indices.length == 1) {
+			newhov = cb_data["index"]["1d"].indices;
+			if (newhov[0] != hovered.data["sel"][0]) {
+				hovered.data["sel"] = newhov;
+				hovered.data["y"] = [cb_data['geometry'].x];
+				hovered.change.emit();
+			}
+		} else {
+			if (hovered.data["p"][0] == 0) {
+				hovered.data["p"] = [0];
+				hovered.data["sel"] = [];
+				hovered.data["y"] = [];
+			}
+		}
+    """)
+	hover_tool = HoverTool(callback=callback_hover, tooltips=None)
+	plot.add_tools(hover_tool)
+	plot.js_on_event(MouseMove, callbackMove)
+	plot.js_on_event(Tap, callbackTap)
 	
 	part_rent_slider = Slider(start=0, end=100, value=plot_data.loc[:, 'WPARTHUUR_P'].iloc[0], step=1, title="Private rental")
 	corp_rent_slider = Slider(start=0, end=100, value=plot_data.loc[:, 'WCORHUUR_P'].iloc[0], step=1, title="Housing corporation rental")
