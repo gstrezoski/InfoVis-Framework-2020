@@ -1,2 +1,2 @@
 export FLASK_ENV=development
-python run.py
+python3 run.py
